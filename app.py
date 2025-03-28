@@ -6,15 +6,14 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-BASE_DIR = os.getcwd()
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
-TRANSITION_DIR = os.path.join(BASE_DIR, "videos_transition")
+# Dossiers pour stocker les fichiers
+UPLOAD_DIR = "uploads"
+OUTPUT_DIR = "outputs"
+TRANSITION_DIR = "videos_transition"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(TRANSITION_DIR, exist_ok=True)
-
 
 @app.route('/generate', methods=['POST'])
 def generate_video():
@@ -39,9 +38,9 @@ def generate_video():
     cmd = [
         "ffmpeg",
         "-loop", "1", "-t", "3", "-i", image_path,
-        "-i", os.path.join(BASE_DIR, "template.mp4"),
+        "-i", "template.mp4",  # Fichier dans GitHub
         "-i", voice_path,
-        "-i", os.path.join(BASE_DIR, "music.mp3"),
+        "-i", "music.mp3",     # Fichier dans GitHub
         "-sub_charenc", "UTF-8",
         "-i", subtitle_path,
         "-filter_complex",
@@ -69,7 +68,9 @@ def generate_video():
         "-y", output_path
     ]
 
+    print("Running ffmpeg for /generate...")
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print("FFmpeg stderr:", result.stderr.decode())
 
     if result.returncode != 0:
         return jsonify({"error": "ffmpeg failed", "details": result.stderr.decode()}), 500
@@ -79,6 +80,7 @@ def generate_video():
 
 @app.route('/generatetransition', methods=['POST'])
 def generate_transition():
+    # Nettoyage du dossier
     for f in os.listdir(TRANSITION_DIR):
         os.remove(os.path.join(TRANSITION_DIR, f))
 
@@ -92,18 +94,17 @@ def generate_transition():
     if len(filenames) < 2:
         return jsonify({'error': 'At least 2 videos are required'}), 400
 
-    inputs = ""
-    for f in filenames:
-        inputs += f"-i {f} "
+    inputs = " ".join(f"-i {f}" for f in filenames)
 
+    # Création du filtre de transition
     filter_parts = []
     for i in range(len(filenames) - 1):
         filter_parts.append(
             f"[{i}:v][{i}:a][{i+1}:v][{i+1}:a]xfade=transition=fade:duration=0.5:offset={i * 4}[v{i+1}a{i+1}]"
         )
     filter_complex = ";".join(filter_parts)
-
     last = f"v{len(filenames)-1}a{len(filenames)-1}"
+
     output_file = f"output_transition_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
     output_path = os.path.join(OUTPUT_DIR, output_file)
 
@@ -112,7 +113,9 @@ def generate_transition():
     -map "[{last}:v]" -map "[{last}:a]" -c:v libx264 -c:a aac -b:a 192k -preset veryfast -y "{output_path}"
     """
 
+    print("Running ffmpeg for /generatetransition...")
     result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print("FFmpeg stderr:", result.stderr.decode())
 
     if result.returncode != 0:
         return jsonify({"error": "transition ffmpeg failed", "details": result.stderr.decode()}), 500
@@ -121,4 +124,4 @@ def generate_transition():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 3000)))
+    app.run(host='0.0.0.0', port=3000)
