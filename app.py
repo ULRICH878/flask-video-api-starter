@@ -2,15 +2,19 @@ from flask import Flask, request, jsonify, send_file
 import os
 import subprocess
 from datetime import datetime
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-BASE_DIR = "/Users/ulrichsame/Downloads/CITATIONSAFRICAINESAUTOVIDEOS"
+BASE_DIR = os.getcwd()
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
+TRANSITION_DIR = os.path.join(BASE_DIR, "videos_transition")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(TRANSITION_DIR, exist_ok=True)
+
 
 @app.route('/generate', methods=['POST'])
 def generate_video():
@@ -72,4 +76,49 @@ def generate_video():
 
     return send_file(output_path, as_attachment=True)
 
+
+@app.route('/generatetransition', methods=['POST'])
+def generate_transition():
+    for f in os.listdir(TRANSITION_DIR):
+        os.remove(os.path.join(TRANSITION_DIR, f))
+
+    filenames = []
+    for i, f in enumerate(request.files.getlist('videos')):
+        filename = secure_filename(f"video{i}.mp4")
+        path = os.path.join(TRANSITION_DIR, filename)
+        f.save(path)
+        filenames.append(path)
+
+    if len(filenames) < 2:
+        return jsonify({'error': 'At least 2 videos are required'}), 400
+
+    inputs = ""
+    for f in filenames:
+        inputs += f"-i {f} "
+
+    filter_parts = []
+    for i in range(len(filenames) - 1):
+        filter_parts.append(
+            f"[{i}:v][{i}:a][{i+1}:v][{i+1}:a]xfade=transition=fade:duration=0.5:offset={i * 4}[v{i+1}a{i+1}]"
+        )
+    filter_complex = ";".join(filter_parts)
+
+    last = f"v{len(filenames)-1}a{len(filenames)-1}"
+    output_file = f"output_transition_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+    output_path = os.path.join(OUTPUT_DIR, output_file)
+
+    cmd = f"""
+    ffmpeg {inputs} -filter_complex "{filter_complex}" \
+    -map "[{last}:v]" -map "[{last}:a]" -c:v libx264 -c:a aac -b:a 192k -preset veryfast -y "{output_path}"
+    """
+
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    if result.returncode != 0:
+        return jsonify({"error": "transition ffmpeg failed", "details": result.stderr.decode()}), 500
+
+    return send_file(output_path, as_attachment=True)
+
+
 if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 3000)))
