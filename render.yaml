@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: flask-video-api-starter
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --timeout 600"
