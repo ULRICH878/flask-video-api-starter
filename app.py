@@ -38,9 +38,9 @@ def generate_video():
     cmd = [
         "ffmpeg",
         "-loop", "1", "-t", "3", "-i", image_path,
-        "-i", "template.mp4",  # Fichier dans GitHub
+        "-i", "template.mp4",
         "-i", voice_path,
-        "-i", "music.mp3",     # Fichier dans GitHub
+        "-i", "music.mp3",
         "-sub_charenc", "UTF-8",
         "-i", subtitle_path,
         "-filter_complex",
@@ -62,7 +62,9 @@ def generate_video():
         "-t", "24",
         "-c:v", "libx264",
         "-preset", "veryfast",
-        "-crf", "23",
+        "-crf", "28",            # qualité un peu réduite pour alléger
+        "-vsync", "vfr",         # évite l’excès de frames
+        "-r", "24",              # framerate plus raisonnable
         "-c:a", "aac",
         "-b:a", "192k",
         "-y", output_path
@@ -77,10 +79,8 @@ def generate_video():
 
     return send_file(output_path, as_attachment=True)
 
-
 @app.route('/generatetransition', methods=['POST'])
 def generate_transition():
-    # Nettoyage du dossier
     for f in os.listdir(TRANSITION_DIR):
         os.remove(os.path.join(TRANSITION_DIR, f))
 
@@ -96,7 +96,6 @@ def generate_transition():
 
     inputs = " ".join(f"-i {f}" for f in filenames)
 
-    # Création du filtre de transition
     filter_parts = []
     for i in range(len(filenames) - 1):
         filter_parts.append(
@@ -110,7 +109,7 @@ def generate_transition():
 
     cmd = f"""
     ffmpeg {inputs} -filter_complex "{filter_complex}" \
-    -map "[{last}:v]" -map "[{last}:a]" -c:v libx264 -c:a aac -b:a 192k -preset veryfast -y "{output_path}"
+    -map "[{last}:v]" -map "[{last}:a]" -c:v libx264 -c:a aac -b:a 192k -preset veryfast -vsync vfr -r 24 -crf 28 -y "{output_path}"
     """
 
     print("Running ffmpeg for /generatetransition...")
@@ -122,6 +121,10 @@ def generate_transition():
 
     return send_file(output_path, as_attachment=True)
 
+# Optionnel pour Render
+@app.route('/healthz')
+def health_check():
+    return 'OK', 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000)
